@@ -1,1 +1,2 @@
-# Sonar-Sensor-Room-Visitor-With-Single-Entrance
+# Sonar Sensor Room Visitor With Single Entrance
+In this repository you can find a sonar based arduino for counting room visitor purpose. To do that you need 2 sonar sensor and 1 PIR sensor. With this application you can measure visitor count for a room which only has one entrance. You need to place sonar sensors inside and outside of the door and you need to locate PIR sensor somewhere in the room that can see everywhere
