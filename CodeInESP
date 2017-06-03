@@ -1,0 +1,201 @@
+#include <ESP8266WiFi.h>
+#include "Adafruit_MQTT.h"
+#include "Adafruit_MQTT_Client.h"
+
+/************************* WiFi Access Point *********************************/
+
+#define WLAN_SSID       "EE321StudyRoom"
+#define WLAN_PASS       "studyRoom"
+
+/************************* Adafruit.io Setup *********************************/
+
+#define AIO_SERVER      "m21.cloudmqtt.com"
+#define AIO_SERVERPORT  11539                   // use 8883 for SSL
+#define AIO_USERNAME    "gurol"
+#define AIO_KEY         "123456"
+
+// Create an ESP8266 WiFiClient class to connect to the MQTT server.
+WiFiClient client;
+// or... use WiFiFlientSecure for SSL
+//WiFiClientSecure client;
+
+// Setup the MQTT client class by passing in the WiFi client and MQTT server and login details.
+Adafruit_MQTT_Client mqtt(&client, AIO_SERVER, AIO_SERVERPORT, AIO_USERNAME, AIO_KEY);
+
+/****************************** Feeds ***************************************/
+
+// Setup a feed called 'studyRoom' for publishing.
+// Notice MQTT paths for AIO follow the form: <username>/feeds/<feedname>
+Adafruit_MQTT_Publish maqttCon = Adafruit_MQTT_Publish(&mqtt, "/study_room");
+
+// defines pins numbers
+int inputPin = 7; 
+const int trigPinIn = 8;
+const int echoPinIn = 9;
+const int trigPinOut = 10;
+const int echoPinOut = 11;
+
+// defines variables
+
+long durationIn;
+double distanceIn;
+long durationOut;
+double distanceOut;
+
+int visitor;
+
+boolean inCounter;
+boolean outCounter;
+boolean doubleRead = false;
+int state;
+int val = 0;
+int pirCounter;
+
+
+void setup() {
+  Serial.begin (115200);
+  pinMode(trigPinIn, OUTPUT); // Sets the trigPinIn as an Output
+  pinMode(echoPinIn, INPUT); // Sets the echoPinIn as an Input
+  pinMode(trigPinOut, OUTPUT); // Sets the trigPinOut as an Output
+  pinMode(echoPinOut, INPUT); // Sets the echoPinOut as an Input
+  pinMode(inputPin, INPUT);
+  visitor = 0;
+  doubleRead = false;
+  WiFi.begin(WLAN_SSID, WLAN_PASS);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+  }
+}
+
+void MQTT_connect() {
+  int8_t ret;
+  // Stop if already connected.
+  if (mqtt.connected()) {
+    return;
+  }
+  uint8_t retries = 3;
+  while ((ret = mqtt.connect()) != 0) { // connect will return 0 for connected
+    mqtt.disconnect();
+    delay(5000);  // wait 5 seconds
+    retries--;
+    if (retries == 0) {
+      // basically die and wait for WDT to reset me
+      while (1);
+    }
+  }
+}
+
+void loop() {
+  MQTT_connect();
+  inSensor();
+  outSensor();
+  if(!doubleRead){
+    if(inCounter){
+      pirCounter = 0;
+      delay(400);
+      int delayTime = 200;
+      while(delayTime != 0){
+        //inSensor();
+        outSensor();
+        if(outCounter){
+          visitor++;
+          outCounter = false;
+          delayTime = 1;
+        }
+        delayTime--;
+      }
+    }
+    else if(outCounter){
+      pirCounter = 0;
+      delay(400);
+      int delayTime2 = 200;
+      while(delayTime2 != 0){
+        inSensor();
+        //outSensor();
+        if(inCounter){
+          if(visitor == 0){
+            visitor = visitor;
+          }
+          else{
+            visitor--;
+          }
+          inCounter = false;
+          delayTime2 = 1;
+        }
+        delayTime2--;
+      }
+    }
+  }
+
+  inSensor();
+  outSensor();
+  if(outCounter & inCounter){
+    doubleRead = true;
+  }
+  else{
+    doubleRead = false;
+  }
+  
+  maqttCon.publish("Visitor: ");
+  maqttCon.publish(visitor);
+  //delay(500);
+  pirSensor();
+  pirCounter++;
+}
+
+
+void pirSensor(){
+  val = digitalRead(inputPin);
+  if(visitor == 0 && val == HIGH){
+    visitor++;
+    pirCounter = 0;
+  }
+  if(visitor > 0 && val == LOW && pirCounter >= 21000){
+    visitor = 0;
+    pirCounter = 0;
+  }
+  if(visitor > 0 && val == HIGH){
+    pirCounter = 0;
+  }
+}
+
+void inSensor(){
+  // Clears the trigPinIn
+  digitalWrite(trigPinIn, LOW);
+  delayMicroseconds(2);
+  // Sets the trigPinIn on HIGH state for 10 micro seconds
+  digitalWrite(trigPinIn, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(trigPinIn, LOW);
+  // Reads the echoPinIn, returns the sound wave travel time in microseconds
+  durationIn = pulseIn(echoPinIn, HIGH);
+  // Calculating the distance
+  distanceIn = durationIn * 0.034 / 2;
+  if(distanceIn < 75){
+    inCounter = true;
+  }
+  else {
+    inCounter = false;
+  }
+}
+
+void outSensor(){
+  // Clears the trigPinIn
+  digitalWrite(trigPinOut, LOW);
+  delayMicroseconds(2);
+  // Sets the trigPinIn on HIGH state for 10 micro seconds
+  digitalWrite(trigPinOut, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(trigPinOut, LOW);
+  // Reads the echoPinIn, returns the sound wave travel time in microseconds
+  durationOut = pulseIn(echoPinOut, HIGH);
+  // Calculating the distance
+  distanceOut = durationOut * 0.034 / 2;
+
+  if(distanceOut < 75){
+    outCounter = true;
+  }
+  else {
+    outCounter = false;
+  }
+}
