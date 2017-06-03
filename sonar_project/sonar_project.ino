@@ -1,20 +1,32 @@
+/*
+* Ultrasonic Sensor HC-SR04 and Arduino Tutorial
+*
+* Crated by Dejan Nedelkovski,
+* www.HowToMechatronics.com
+*
+*/
 // defines pins numbers
-int pirPin = 7;
+int inputPin = 7; 
 const int trigPinIn = 8;
 const int echoPinIn = 9;
 const int trigPinOut = 10;
 const int echoPinOut = 11;
 
-//defines parameters
-double maxDistance = 70;
-double minDistance = 10;
-int delayTimeMilliseconds = 400;
-int maxCheckTime = 200;
-
 // defines variables
-int peopleIn = 0;
-int peopleOut = 0;
-int visitor = 0;
+
+long durationIn;
+double distanceIn;
+long durationOut;
+double distanceOut;
+
+int visitor;
+int visitorPrev;
+
+boolean inCounter;
+boolean outCounter;
+boolean doubleRead = false;
+int state;
+int val = 0;
 int pirCounter;
 
 void setup() {
@@ -22,81 +34,133 @@ void setup() {
   pinMode(echoPinIn, INPUT); // Sets the echoPinIn as an Input
   pinMode(trigPinOut, OUTPUT); // Sets the trigPinOut as an Output
   pinMode(echoPinOut, INPUT); // Sets the echoPinOut as an Input
-  pinMode(pirPin, INPUT);
-  Serial.begin(115200); // Starts the serial communication
+  pinMode(inputPin, INPUT);
+  visitor = 0;
+  visitorPrev = 0;
+  doubleRead = false;
+  state = 0;
+  Serial.begin(9600); // Starts the serial communication
 }
 
-void pirSensor() {
-  int val = digitalRead(pirPin);
-  if (visitor == 0 && val == HIGH) {
-    peopleIn++;
-    pirCounter = 0;
-  } else if (visitor > 0 && val == LOW && pirCounter >= 21000) {
-    peopleOut = peopleIn;
-    pirCounter = 0;
-  } else if (visitor > 0 && val == HIGH) {
+void pirSensor(){
+  val = digitalRead(inputPin);
+  if(visitor == 0 && val == HIGH && pirCounter > 500){
+    visitor++;
     pirCounter = 0;
   }
-  pirCounter++;
+  if(visitor > 0 && val == LOW && pirCounter >= 21000){
+    visitor = 0;
+    pirCounter = 0;
+  }
+  if(visitor > 0 && val == HIGH){
+    pirCounter = 0;
+  }
 }
 
-double measureDistance(int trigPin, int echoPin) {
-  double duration, distance;
-  digitalWrite(trigPin, LOW);
+void inSensor(){
+  // Clears the trigPinIn
+  digitalWrite(trigPinIn, LOW);
   delayMicroseconds(2);
-  digitalWrite(trigPin, HIGH);
+  // Sets the trigPinIn on HIGH state for 10 micro seconds
+  digitalWrite(trigPinIn, HIGH);
   delayMicroseconds(10);
-  digitalWrite(trigPin, LOW);
-  duration = pulseIn(echoPin, HIGH);
-  distance = (duration / 2) / 29.1;
-  return distance;
+  digitalWrite(trigPinIn, LOW);
+  // Reads the echoPinIn, returns the sound wave travel time in microseconds
+  durationIn = pulseIn(echoPinIn, HIGH);
+  // Calculating the distance
+  distanceIn = durationIn * 0.034 / 2;
+  if(distanceIn > 10 && distanceIn < 150){
+    inCounter = true;
+  }
+  else {
+    inCounter = false;
+  }
 }
 
-boolean checkDistance(double distance) {
-  if (distance < maxDistance && distance > minDistance) {
-    return true;
+void outSensor(){
+  // Clears the trigPinIn
+  digitalWrite(trigPinOut, LOW);
+  delayMicroseconds(2);
+  // Sets the trigPinIn on HIGH state for 10 micro seconds
+  digitalWrite(trigPinOut, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(trigPinOut, LOW);
+  // Reads the echoPinIn, returns the sound wave travel time in microseconds
+  durationOut = pulseIn(echoPinOut, HIGH);
+  // Calculating the distance
+  distanceOut = durationOut * 0.034 / 2;
+
+  if(distanceOut > 10 && distanceOut < 150){
+    outCounter = true;
   }
-  return false;
+  else {
+    outCounter = false;
+  }
 }
+
 
 void loop() {
-  boolean inCounter = checkDistance(measureDistance(trigPinIn, echoPinIn));
-  boolean outCounter = checkDistance(measureDistance(trigPinOut, echoPinOut));
-  boolean doubleRead = inCounter && outCounter;
-  if (!doubleRead) {
-    pirCounter = 0;
-    if (inCounter) {
-      delay(delayTimeMilliseconds);
-      int delayTime = maxCheckTime;
-      while (delayTime != 0) {
-        outCounter = checkDistance(measureDistance(trigPinOut, echoPinOut));
-        if (outCounter) {
-          peopleIn++;
+  inSensor();
+  outSensor();
+  /*Serial.println(distanceIn);
+  Serial.println("Sensor that which located outside: ");
+  Serial.println(distanceOut);*/
+  if(!doubleRead){
+    if(inCounter){
+      pirCounter = 0;
+      delay(300);
+      int delayTime = 200;
+      while(delayTime != 0){
+        //inSensor();
+        outSensor();
+        if(outCounter){
+          delay(200);
+          visitor++;
+          outCounter = false;
           delayTime = 1;
         }
         delayTime--;
       }
-    } else if (outCounter) {
-      delay(delayTimeMilliseconds);
-      int delayTime2 = maxCheckTime;
-      while (delayTime2 != 0) {
-        inCounter = checkDistance(measureDistance(trigPinIn, echoPinIn));
-        if (inCounter) {
-          if (visitor == 0) {
-            peopleOut = peopleOut;
-          } else {
-            peopleOut++;
+    }
+    else if(outCounter){
+      pirCounter = 0;
+      delay(200);
+      int delayTime2 = 200;
+      while(delayTime2 != 0){
+        inSensor();
+        //outSensor();
+        if(inCounter){
+          delay(200);
+          if(visitor == 0){
+            visitor = visitor;
           }
+          else{
+            visitor--;
+          }
+          inCounter = false;
           delayTime2 = 1;
         }
         delayTime2--;
       }
     }
   }
-  visitor = peopleIn - peopleOut;
-  Serial.write(peopleIn);
-  Serial.write("-");
-  Serial.write(peopleOut);
-  Serial.write("-");
+
+  inSensor();
+  outSensor();
+  if(outCounter && inCounter){
+    doubleRead = true;
+  }
+  else{
+    doubleRead = false;
+  }
+
+  if(visitor != visitorPrev){
+    Serial.print("Visitor: ");
+    Serial.println(visitor);
+    visitorPrev = visitor;
+  }
+  delayMicroseconds(40);
+  //delay(500);
   pirSensor();
+  pirCounter++;
 }
